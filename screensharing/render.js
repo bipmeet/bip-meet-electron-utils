@@ -94,6 +94,7 @@ class ScreenShareRenderHook {
                         self._startWindowInterval();
                     }
                 } else {
+                    self._mainPPWindowName = "";
                     self._isScreenSharing = false;
                     if (self._PPWindowInterval) clearInterval(self._PPWindowInterval);
                 }
