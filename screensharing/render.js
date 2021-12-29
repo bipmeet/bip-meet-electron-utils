@@ -156,7 +156,7 @@ class ScreenShareRenderHook {
         this._PPWindowInterval = setInterval(async () => {
             const windows = await desktopCapturer
                 .getSources({ types: ['window'] });
-            const powerPointWindow = windows.find(x => x.name.includes("PowerPoint Slide Show"));
+        const powerPointWindow = windows.find(x => /PowerPoint.*\[.*\]/.test(x.name));
             const mainPPWindow = windows.find(x => this._mainPPWindowName.length > 0 && x.name.includes(this._mainPPWindowName));
             if (powerPointWindow) {
                 if (self._mainPPWindowName.length === 0) {
