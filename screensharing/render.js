@@ -1,7 +1,7 @@
 const { ipcRenderer, desktopCapturer } = require('electron');
-const { isMac } = require('jitsi-meet-electron-utils/screensharing/utils');
 
 const { SCREEN_SHARE_EVENTS_CHANNEL, SCREEN_SHARE_EVENTS } = require('./constants');
+const { isMac, isPPTSlideShow } = require('./utils');
 
 /**
  * Renderer process component that sets up electron specific screen sharing functionality, like screen sharing
@@ -88,12 +88,15 @@ class ScreenShareRenderHook {
             },
             screenSharingStatusChanged(event){
                 if (event.on) {
-                    if (event.details.sourceType === "window" 
-                        && event.details.windowName 
-                        && (isMac() || event.details.windowName.includes("PowerPoint"))) {
+                    const { windowName, sourceType } = event.details
+                    if (sourceType === "window" 
+                        && windowName
+                        && !isPPTSlideShow(windowName)
+                        && (isMac() || windowName.includes("PowerPoint"))) {
                         self._startWindowInterval();
                     }
                 } else {
+                    self._mainPPWindowName = "";
                     self._isScreenSharing = false;
                     if (self._PPWindowInterval) clearInterval(self._PPWindowInterval);
                 }
@@ -156,7 +159,7 @@ class ScreenShareRenderHook {
         this._PPWindowInterval = setInterval(async () => {
             const windows = await desktopCapturer
                 .getSources({ types: ['window'] });
-            const powerPointWindow = windows.find(x => x.name.includes("PowerPoint Slide Show"));
+            const powerPointWindow = windows.find(x => isPPTSlideShow(x.name));
             const mainPPWindow = windows.find(x => this._mainPPWindowName.length > 0 && x.name.includes(this._mainPPWindowName));
             if (powerPointWindow) {
                 if (self._mainPPWindowName.length === 0) {
