@@ -1,7 +1,7 @@
 const { ipcRenderer, desktopCapturer } = require('electron');
-const { isPPTSlideShow } = require('jitsi-meet-electron-utils/screensharing/utils');
 
 const { SCREEN_SHARE_EVENTS_CHANNEL, SCREEN_SHARE_EVENTS } = require('./constants');
+const { isMac, isPPTSlideShow } = require('./utils');
 
 /**
  * Renderer process component that sets up electron specific screen sharing functionality, like screen sharing
@@ -91,7 +91,8 @@ class ScreenShareRenderHook {
                     const { windowName, sourceType } = event.details
                     if (sourceType === "window" 
                         && windowName
-                        && (windowName.includes("PowerPoint") && !isPPTSlideShow(windowName))) {
+                        && !isPPTSlideShow(windowName)
+                        && (isMac() || windowName.includes("PowerPoint"))) {
                         self._startWindowInterval();
                     }
                 } else {
