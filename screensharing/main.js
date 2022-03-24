@@ -1,8 +1,9 @@
 /* global __dirname */
+const { exec } = require('child_process');
 const electron = require('electron');
 const os = require('os');
 
-const { SCREEN_SHARE_EVENTS_CHANNEL, SCREEN_SHARE_EVENTS, TRACKER_SIZE } = require('./constants');
+const { SCREEN_SHARE_EVENTS_CHANNEL, SCREEN_SHARE_EVENTS, SCREEN_SHARE_GET_SOURCES, TRACKER_SIZE } = require('./constants');
 const { isMac } = require('./utils');
 const { windowsEnableScreenProtection } = require('../helpers/functions');
 
@@ -31,6 +32,7 @@ class ScreenShareMainHook {
 
         // Listen for events coming in from the main render window and the screen share tracker window.
         electron.ipcMain.on(SCREEN_SHARE_EVENTS_CHANNEL, this._onScreenSharingEvent);
+        electron.ipcMain.handle(SCREEN_SHARE_GET_SOURCES, this._onGetSourcesInvoke);
 
         electron.ipcMain.on('PARTICIPANT_WINDOW_OPEN', () => {
             participantListToggler(false);
@@ -81,7 +83,20 @@ class ScreenShareMainHook {
             handleHostAction && electron.ipcMain.removeListener('HANDLE_HOST_ACTION', handleHostAction);
             getTenantFromStore && electron.ipcMain.removeListener('GET_TENANT_FROM_STORE', getTenantFromStore);
             getApplicationVersion && electron.ipcMain.removeListener('GET_APP_VERSION', getApplicationVersion);
+            electron.ipcMain.removeHandler(SCREEN_SHARE_GET_SOURCES);
         });
+    }
+
+    /**
+     * Returns the desktopCapturer sources according to
+     * https://www.electronjs.org/docs/latest/breaking-changes#removed-desktopcapturergetsources-in-the-renderer
+     *
+     * @param {Object} _event - Electron event data, unused
+     * @param {Object} opts - parameters for desktopCapturer.getSources()
+     * @returns {Promise<DesktopCapturerSource[]>} The return value of desktopCapturer.getSources()
+     */
+    _onGetSourcesInvoke(_event, opts) {
+        return electron.desktopCapturer.getSources(opts);
     }
 
     /**
@@ -99,6 +114,11 @@ class ScreenShareMainHook {
                 if (this._screenShareTracker) {
                     this._screenShareTracker.close();
                     this._screenShareTracker = undefined;
+                }
+                break;
+            case SCREEN_SHARE_EVENTS.HIDE_TRACKER:
+                if (this._screenShareTracker) {
+                    this._screenShareTracker.minimize();
                 }
                 break;
             case SCREEN_SHARE_EVENTS.STOP_SCREEN_SHARE:
@@ -176,17 +196,9 @@ class ScreenShareMainHook {
      * @param {string} bundleId- OSX Application BundleId
      */
     _verifyScreenCapturePermissions(bundleId) {
-        const {
-            hasPromptedForPermission,
-            hasScreenCapturePermission,
-            resetPermissions,
-        } = require('mac-screen-capture-permissions');
-
-        const hasPermission = hasScreenCapturePermission();
-        const promptedAlready = hasPromptedForPermission();
-
-        if (promptedAlready && !hasPermission) {
-            resetPermissions({ bundleId });
+        const hasPermission = electron.systemPreferences.getMediaAccessStatus('screen') === 'granted';
+        if (!hasPermission) {
+            exec('tccutil reset ScreenCapture ' + bundleId);
         }
     }
 }

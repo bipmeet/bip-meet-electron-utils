@@ -1,7 +1,9 @@
-const { ipcRenderer, desktopCapturer } = require('electron');
+const { ipcRenderer } = require('electron');
 
-const { SCREEN_SHARE_EVENTS_CHANNEL, SCREEN_SHARE_EVENTS } = require('./constants');
 const { isMac, isPPTSlideShow } = require('./utils');
+
+
+const { SCREEN_SHARE_EVENTS_CHANNEL, SCREEN_SHARE_EVENTS, SCREEN_SHARE_GET_SOURCES } = require('./constants');
 
 /**
  * Renderer process component that sets up electron specific screen sharing functionality, like screen sharing
@@ -54,10 +56,9 @@ class ScreenShareRenderHook {
              * 150px.
              */
             obtainDesktopStreams(callback, errorCallback, options = {}) {
-                desktopCapturer
-                .getSources(options)
-                .then((sources) => callback(sources))
-                .catch((error) => errorCallback(error));
+                ipcRenderer.invoke(SCREEN_SHARE_GET_SOURCES, options)
+                    .then((sources) => callback(sources))
+                    .catch((error) => errorCallback(error));
             },
             showParticipantWindow() {
                 ipcRenderer.send('PARTICIPANT_WINDOW_OPEN');
@@ -88,7 +89,7 @@ class ScreenShareRenderHook {
             },
             screenSharingStatusChanged(event){
                 if (event.on) {
-                    const { windowName, sourceType } = event.details
+                    const { windowName, sourceType } = event.details;
                     if (sourceType === "window" 
                         && windowName
                         && !isPPTSlideShow(windowName)
@@ -105,7 +106,7 @@ class ScreenShareRenderHook {
 
         ipcRenderer.on(SCREEN_SHARE_EVENTS_CHANNEL, this._onScreenSharingEvent);
         this._api.on('screenSharingStatusChanged', this._onScreenSharingStatusChanged);
-        this._api.on('videoConferenceLeft', this._cleanTrackerContext);
+        this._api.on('videoConferenceLeft', this._sendCloseTrackerEvent);
     }
 
     /**
@@ -157,8 +158,7 @@ class ScreenShareRenderHook {
     _startWindowInterval() {
         const self = this;
         this._PPWindowInterval = setInterval(async () => {
-            const windows = await desktopCapturer
-                .getSources({ types: ['window'] });
+            const windows = await ipcRenderer.invoke(SCREEN_SHARE_GET_SOURCES, { types: ['window'] });
             const powerPointWindow = windows.find(x => isPPTSlideShow(x.name));
             const mainPPWindow = windows.find(x => this._mainPPWindowName.length > 0 && x.name.includes(this._mainPPWindowName));
             if (powerPointWindow) {
@@ -195,7 +195,7 @@ class ScreenShareRenderHook {
     _cleanTrackerContext() {
         ipcRenderer.removeListener(SCREEN_SHARE_EVENTS_CHANNEL, this._onScreenSharingEvent);
         this._api.removeListener('screenSharingStatusChanged', this._onScreenSharingStatusChanged);
-        this._api.removeListener('videoConferenceLeft', this._cleanTrackerContext);
+        this._api.removeListener('videoConferenceLeft', this._sendCloseTrackerEvent);
         this._PPWindowInterval = 0;
         this._mainPPWindowName = "";
         this._sendCloseTrackerEvent();
