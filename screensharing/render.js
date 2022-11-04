@@ -93,13 +93,15 @@ class ScreenShareRenderHook {
                     if (sourceType === "window" 
                         && windowName
                         && !isPPTSlideShow(windowName)
-                        && (isMac() || windowName.includes("PowerPoint"))) {
+                        && (isMac() || windowName.includes("PowerPoint"))
+                        && !self._PPWindowInterval) {
                         self._startWindowInterval();
                     }
                 } else {
                     self._mainPPWindowName = "";
                     self._isScreenSharing = false;
                     if (self._PPWindowInterval) clearInterval(self._PPWindowInterval);
+                    self._onApiDispose();
                 }
             }
         };
