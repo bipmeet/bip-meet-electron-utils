@@ -6,16 +6,16 @@ const os = require('os');
 const path = require('path');
 const { logInfo, setLogger } = require('../main/utils');
 
-const { EVENTS, STATES, AOT_WINDOW_NAME, EXTERNAL_EVENTS } = require('../constants');
+const { EVENTS, STATES, AOT_WINDOW_NAME, EXTERNAL_EVENTS, EVENTS_CHANNEL } = require('../constants');
 
 /**
  * Sends an update state event to main process
- * @param {string} value the updated aot window state
+ * @param {string} state the updated aot window state
  */
- const sendStateUpdate = value => {
-    logInfo(`sending ${value} state update to main process`);
+ const sendStateUpdate = state => {
+    logInfo(`sending ${state} state update to main process`);
 
-    ipcRenderer.send(EVENTS.UPDATE_STATE, { value } );
+    ipcRenderer.send(EVENTS_CHANNEL, { name: EVENTS.UPDATE_STATE, state } );
 };
 
 /**
@@ -25,7 +25,11 @@ const { EVENTS, STATES, AOT_WINDOW_NAME, EXTERNAL_EVENTS } = require('../constan
  * @param {Object} initialSize - The size of the window on move start.
  */
 const move = (x, y, initialSize) => {
-    ipcRenderer.send(EVENTS.MOVE, { x, y }, initialSize);
+    ipcRenderer.send(EVENTS_CHANNEL, {
+        name: EVENTS.MOVE,
+        initialSize,
+        position: { x, y },
+    });
 };
 
 class AlwaysOnTop extends EventEmitter {
@@ -33,34 +37,47 @@ class AlwaysOnTop extends EventEmitter {
      * Creates new instance.
      *
      * @param {JitsiIFrameApi} api - the Jitsi Meet iframe api object.
+     * @param {Object} options - AOT options.
      */
-    constructor(api) {
+    constructor(api, {
+        showOnPrejoin
+    }) {
         super();
 
         this._api = api;
-        this._onConferenceLeft = this._onConferenceLeft.bind(this);
+        this._showOnPrejoin = showOnPrejoin;
+        this._joined = false;
         this._disposeWindow = this._disposeWindow.bind(this);
         this._dismiss = this._dismiss.bind(this);
         this._onConferenceJoined = this._onConferenceJoined.bind(this);
-        this._onStateChange = this._onStateChange.bind(this);
+        this._onAotEvent = this._onAotEvent.bind(this);
+        this._handleStateChange = this._handleStateChange.bind(this);
         this._switchToMainWindow = this._switchToMainWindow.bind(this);
         this._updateLargeVideoSrc = this._updateLargeVideoSrc.bind(this);
         this._onIntersection = this._onIntersection.bind(this);
         this._intersectionObserver = new IntersectionObserver(this._onIntersection);
 
-        this._api.on('_willDispose', this._onConferenceLeft);
         this._api.on('videoConferenceJoined', this._onConferenceJoined);
-        this._api.on('videoConferenceLeft', this._onConferenceLeft);
         this._api.on('readyToClose', this._disposeWindow);
+
+        if (showOnPrejoin) {
+            this._api.on('prejoinScreenLoaded', this._onConferenceJoined);
+        }
+        
+        window.parent.addEventListener('beforeunload', this._disposeWindow);
     }
 
     /**
-     * Getter for the large video element in Jitsi Meet.
+     * Getter for the large/prejoin video element in Jitsi Meet.
      *
      * @returns {HTMLElement|undefined} the large video.
      */
     get _jitsiMeetLargeVideo() {
-        return this._api._getLargeVideo();
+        if (this._showOnPrejoin) {
+            return this._api._getPrejoinVideo() || this._api._getLargeVideo();
+        } else {
+            return this._api._getLargeVideo();
+        }
     }
 
     /**
@@ -77,27 +94,17 @@ class AlwaysOnTop extends EventEmitter {
 
     _onConferenceJoined() {
         logInfo('on conference joined');
-        ipcRenderer.on(EVENTS.UPDATE_STATE, this._onStateChange);
+        if (this._joined) {
+            logInfo('conference already joined');
+            return;
+        }
+
+        this._joined = true;
+        ipcRenderer.on(EVENTS_CHANNEL, this._onAotEvent);
 
         sendStateUpdate(STATES.CONFERENCE_JOINED);
 
         this._intersectionObserver.observe(this._api.getIFrame());
-    }
-
-    _onConferenceLeft() {
-        logInfo('on conference left');
-
-        this._intersectionObserver.unobserve(this._api.getIFrame());
-        this.emit(EXTERNAL_EVENTS.ALWAYSONTOP_WILL_CLOSE);
-
-        sendStateUpdate(STATES.CLOSE);
-
-        ipcRenderer.removeListener(EVENTS.UPDATE_STATE, this._onStateChange);
-
-        if (this._aotWindow) {
-            this._aotWindow.close();
-            this._aotWindow = null;
-        }
     }
 
     /**
@@ -165,13 +172,15 @@ class AlwaysOnTop extends EventEmitter {
     /**
      * Opens a new window
      */
-    _openNewWindow() {
+    _openNewWindow(magic) {
+        logInfo('new window');
         this._api.on('largeVideoChanged', this._updateLargeVideoSrc);
+        this._api.on('prejoinVideoChanged', this._updateLargeVideoSrc);
         this._api.on('videoMuteStatusChanged', this._updateLargeVideoSrc);
 
-        this._aotWindow = window.open('', AOT_WINDOW_NAME);
+        this._aotWindow = window.open('', `${AOT_WINDOW_NAME}-${magic}`);
         this._aotWindow.alwaysOnTop = {
-        api: this._api,
+            api: this._api,
             dismiss: this._dismiss,
             /**
              * Custom implementation for window move.
@@ -220,7 +229,9 @@ class AlwaysOnTop extends EventEmitter {
 
         this.emit(EXTERNAL_EVENTS.ALWAYSONTOP_WILL_CLOSE);
 
-        this._aotWindow.srcObject = null;
+        if (this._aotWindowVideo) {
+            this._aotWindowVideo.srcObject = null;
+        }
     }
 
     /**
@@ -228,6 +239,7 @@ class AlwaysOnTop extends EventEmitter {
      */
     _showWindow() {
         this._api.on('largeVideoChanged', this._updateLargeVideoSrc);
+        this._api.on('prejoinVideoChanged', this._updateLargeVideoSrc);
         this._api.on('videoMuteStatusChanged', this._updateLargeVideoSrc);
 
         this._updateLargeVideoSrc();
@@ -240,40 +252,65 @@ class AlwaysOnTop extends EventEmitter {
      _disposeWindow() {
         logInfo('disposing window');
 
-        this._intersectionObserver.unobserve(this._api.getIFrame());
+        this._joined = false;
+        this._api.removeListener('largeVideoChanged', this._updateLargeVideoSrc);
+        this._api.removeListener('prejoinVideoChanged', this._updateLargeVideoSrc);
+        this._api.removeListener('videoMuteStatusChanged', this._updateLargeVideoSrc);
+        this._api.removeListener('videoConferenceJoined', this._onConferenceJoined);
+        this._api.removeListener('readyToClose', this._disposeWindow);
+        window.parent.removeEventListener('beforeunload', this._disposeWindow);
+
+        if (this._showOnPrejoin) {
+            this._api.removeListener('prejoinScreenLoaded', this._onConferenceJoined);
+        }
+
+        const iframe = this._api.getIFrame();
+
+        if (iframe) {
+            this._intersectionObserver.unobserve(this._api.getIFrame());
+        }
+
         this.emit(EXTERNAL_EVENTS.ALWAYSONTOP_WILL_CLOSE);
 
         sendStateUpdate(STATES.CLOSE);
-
-        this._api.removeListener('_willDispose', this._onConferenceLeft);
-        this._api.removeListener('largeVideoChanged', this._updateLargeVideoSrc);
-        this._api.removeListener('videoMuteStatusChanged', this._updateLargeVideoSrc);
-        this._api.removeListener('videoConferenceJoined', this._onConferenceJoined);
-        this._api.removeListener('videoConferenceLeft', this._onConferenceLeft);
-        this._api.removeListener('readyToClose', this._disposeWindow);
-
-        ipcRenderer.removeListener(EVENTS.UPDATE_STATE, this._onStateChange);
+        ipcRenderer.removeListener(EVENTS_CHANNEL, this._onAotEvent);
 
         if (this._aotWindow) {
+            delete this._aotWindow.alwaysOnTop;
             this._aotWindow.close();
             this._aotWindow = null;
         }
     }
 
     /**
-     * Handler for state updates
-     * @param {Event} event trigger event
-     * @param {Object} options event params
+     * Handler for aot channel events
+     *
+     * @param {IpcRendererEvent} event electron event
+     * @param {Object} options channel params
      */
-    _onStateChange (event, { value }) {
-        logInfo(`handling ${value} state update from main process`);
+    _onAotEvent (event, { name, ...rest }) {
+        switch (name) {
+            case EVENTS.UPDATE_STATE:
+                this._handleStateChange(rest.state, rest.data);
+                break;
+        }
+    }
 
-        switch (value) {
+    /**
+     * Handler for state updates
+     *
+     * @param {string} state updated state
+     * @param {Object} data ancillary data to the event
+     */
+     _handleStateChange (state, data) {
+        logInfo(`handling ${state} state update from main process`);
+
+        switch (state) {
             case STATES.HIDE:
                 this._hideWindow();
                 break;
             case STATES.OPEN:
-                this._openNewWindow();
+                this._openNewWindow(data.aotMagic);
                 break;
             case STATES.SHOW:
                 this._showWindow();
@@ -289,10 +326,13 @@ class AlwaysOnTop extends EventEmitter {
 * window which displays Jitsi Meet.
 *
 * @param {JitsiIFrameApi} api - the Jitsi Meet iframe api object.
-* @param {Logger} loggerTransports - external loggers
+* @param {Logger} loggerTransports - external loggers.
+* @param {Object} options - AOT options.
 */
-module.exports = (api, loggerTransports) => {
+module.exports = (api, loggerTransports, { showOnPrejoin = false } = {}) => {
     setLogger(loggerTransports);
 
-    return new AlwaysOnTop(api, loggerTransports);
+    return new AlwaysOnTop(api, {
+        showOnPrejoin: showOnPrejoin && typeof api._getPrejoinVideo === 'function'
+    });
 };

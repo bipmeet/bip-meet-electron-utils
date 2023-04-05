@@ -26,6 +26,7 @@ class ScreenShareMainHook {
         this._jitsiMeetWindow = jitsiMeetWindow;
         this._identity = identity;
         this._onScreenSharingEvent = this._onScreenSharingEvent.bind(this);
+        this.cleanup = this.cleanup.bind(this);
 
         if (osxBundleId && isMac()) {
             this._verifyScreenCapturePermissions(osxBundleId);
@@ -74,18 +75,23 @@ class ScreenShareMainHook {
         });
 
         // Clean up ipcMain handlers to avoid leaks.
-        this._jitsiMeetWindow.on('closed', () => {
-            electron.ipcMain.removeListener(SCREEN_SHARE_EVENTS_CHANNEL, this._onScreenSharingEvent);
-            participantListToggler && electron.ipcMain.removeListener('PARTICIPANT_WINDOW_OPEN', participantListToggler);
-            participantListToggler && electron.ipcMain.removeListener('PARTICIPANT_WINDOW_CLOSE', participantListToggler);
-            updateHostHandler && electron.ipcMain.removeListener('PARTICIPANT_WINDOW_UPDATE_HOST', updateHostHandler);
-            updateCurrentLang && electron.ipcMain.removeListener('UPDATE_CURRENT_LANG', updateCurrentLang);
-            openWhiteBoardTracker && electron.ipcMain.removeListener('TOGGLE_WHITE_BOARD_SCREEN', openWhiteBoardTracker);
-            handleHostAction && electron.ipcMain.removeListener('HANDLE_HOST_ACTION', handleHostAction);
-            getTenantFromStore && electron.ipcMain.removeListener('GET_TENANT_FROM_STORE', getTenantFromStore);
-            getApplicationVersion && electron.ipcMain.removeListener('GET_APP_VERSION', getApplicationVersion);
-            electron.ipcMain.removeHandler(SCREEN_SHARE_GET_SOURCES);
-        });
+        this._jitsiMeetWindow.on('closed', this.cleanup);
+    }
+
+    /**
+     * Cleanup any handlers
+     */
+    cleanup() {
+        electron.ipcMain.removeListener(SCREEN_SHARE_EVENTS_CHANNEL, this._onScreenSharingEvent);
+        participantListToggler && electron.ipcMain.removeListener('PARTICIPANT_WINDOW_OPEN', participantListToggler);
+        participantListToggler && electron.ipcMain.removeListener('PARTICIPANT_WINDOW_CLOSE', participantListToggler);
+        updateHostHandler && electron.ipcMain.removeListener('PARTICIPANT_WINDOW_UPDATE_HOST', updateHostHandler);
+        updateCurrentLang && electron.ipcMain.removeListener('UPDATE_CURRENT_LANG', updateCurrentLang);
+        openWhiteBoardTracker && electron.ipcMain.removeListener('TOGGLE_WHITE_BOARD_SCREEN', openWhiteBoardTracker);
+        handleHostAction && electron.ipcMain.removeListener('HANDLE_HOST_ACTION', handleHostAction);
+        getTenantFromStore && electron.ipcMain.removeListener('GET_TENANT_FROM_STORE', getTenantFromStore);
+        getApplicationVersion && electron.ipcMain.removeListener('GET_APP_VERSION', getApplicationVersion);
+        electron.ipcMain.removeHandler(SCREEN_SHARE_GET_SOURCES);
     }
 
     /**
@@ -162,7 +168,8 @@ class ScreenShareMainHook {
             webPreferences: {
                 contextIsolation: true,
                 nodeIntegration: false,
-                preload: path.resolve(__dirname, './preload.js')
+                preload: path.resolve(__dirname, './preload.js'),
+                sandbox: false
             }
         });
 

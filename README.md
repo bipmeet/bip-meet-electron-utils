@@ -120,22 +120,9 @@ alwaysOnTop.on('will-close', handleAlwaysOnTopClose);
 
 * _will-close_ - emitted right before the always on top window is going to close
 
-#### WiFi Stats
-Provides a function to query for wifi stats on the host computer. Returns information like interface name, addresses, signal quality, noise (not available on all OS).
-
-**WiFi Stats:**
-
-In the **render** electron process of the window where Jitsi Meet is displayed:
-```Javascript
-const {
-    setupWiFiStats
-} = require("@jitsi/electron-sdk");
-
-const api = new JitsiMeetExternalAPI(...);
-setupWiFiStats(api.getIFrame());
-```
 
 #### Power Monitor
+
 Provides a way to query electron for system idle and receive power monitor events.
 
 **enable power monitor:**
@@ -172,15 +159,16 @@ For examples of installation and usage checkout the [Jitsi Meet Electron](https:
 
 ## Development
 
+Enable husky to avoid accidental pushes to the main branch:
+
+    npx husky install
+
 To rebuild the native code, use:
 
     npx node-gyp rebuild
 
 ## Publishing
 
-1. Create release branch: `git checkout -b release-1-2-3`, replacing 1-2-3 with the desired release version
-2. Increment the version: `npm version patch`, replacing `patch` with `minor` or `major` as required
-3. Push to github: `git push`
-4. Create PR: `gh pr create`
-5. Once PR is merged, create and publish Github release: `gh release create v1.2.3`, replacing v1.2.3 with the desired release version
-7. Github action will prebuildify and publish release to npm
+On every push to main branch, the .github/workflows/ci.yml will create a new version and publish to npm.
+
+If a major or minor release is required, use respective key words in the commit message, see https://github.com/phips28/gh-action-bump-version#workflow

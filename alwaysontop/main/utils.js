@@ -25,6 +25,7 @@ let logger;
  */
 const store = new Store();
 
+
 /**
  * Changes the window resize functionality to respect the passed aspect ratio.
  *

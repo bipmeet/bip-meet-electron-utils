@@ -1,15 +1,8 @@
 const setupAlwaysOnTopRender = require('./render');
-const setupAlwaysOnTopMain = require('./main');
-const { popupsConfigRegistry } = require('../popupsconfig');
-
-popupsConfigRegistry.registerPopupConfig('always-on-top', {
-    matchPatterns: {
-        frameName: 'AlwaysOnTop'
-    },
-    target: 'electron'
-});
+const { cleanupAlwaysOnTopMain, setupAlwaysOnTopMain } = require('./main');
 
 module.exports = {
-    setupAlwaysOnTopRender,
-    setupAlwaysOnTopMain
+    cleanupAlwaysOnTopMain,
+    setupAlwaysOnTopMain,
+    setupAlwaysOnTopRender
 };
