@@ -3,25 +3,15 @@ const {
     move,
     ondblclick,
     onload,
-    onbeforeunload,
-    shouldImplementDrag,
-    getCurrentSize,
     dismiss
 } = window.alwaysOnTop;
 
-/**
- * Stores the initial size of AOT window before moving.
- * This is needed in order to keep the initial size during move on
- * monitors with a scaling applied
- */
 let initialSize;
 
 const dismissButton = document.querySelector('.dismiss');
 if (dismissButton) {
     dismissButton.addEventListener('click', dismiss);
 }
-
-window.addEventListener('beforeunload', onbeforeunload);
 
 window.addEventListener('dblclick', ondblclick);
 
@@ -37,20 +27,23 @@ api._getAlwaysOnTopResources().forEach(src => loadFile(src));
  * @returns {void}
  */
 function setupDraggable() {
-    if (shouldImplementDrag) {
-        window.addEventListener('mousedown', mouseDownEvent => {
-            initialSize = getCurrentSize();
-            pageX = mouseDownEvent.pageX;
-            pageY = mouseDownEvent.pageY;
-            window.addEventListener('mousemove', drag);
-        });
+    /**
+     * If we use the standard drag (-webkit-app-region: drag) all mouse
+     * events are blocked. To fix this we'll implement drag ourselves.
+     */
+    window.addEventListener('mousedown', mouseDownEvent => {
+        initialSize = {
+            width: window.innerWidth,
+            height: window.innerHeight
+        };
+        pageX = mouseDownEvent.pageX;
+        pageY = mouseDownEvent.pageY;
+        window.addEventListener('mousemove', drag);
+    });
 
-        window.addEventListener('mouseup', () => {
-            window.removeEventListener('mousemove', drag);
-        });
-    } else {
-        document.body.style['-webkit-app-region'] = 'drag';
-    }
+    window.addEventListener('mouseup', () => {
+        window.removeEventListener('mousemove', drag);
+    });
 }
 
 /**
