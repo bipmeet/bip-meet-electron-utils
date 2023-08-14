@@ -91,7 +91,7 @@ class ScreenShareRenderHook {
             },
             screenSharingStatusChanged(event){
                 if (event.on) {
-                    const { windowName, sourceType } = event.details
+                    const { windowName, sourceType } = event.details;
                     if (sourceType === "window" 
                         && windowName
                         && !isPPTSlideShow(windowName)
