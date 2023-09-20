@@ -1,6 +1,6 @@
 {
   "name": "@jitsi/electron-sdk",
-  "version": "5.0.5",
+  "version": "6.0.3",
   "description": "Utilities for jitsi-meet-electron project",
   "main": "index.js",
   "scripts": {
@@ -35,9 +35,9 @@
   },
   "dependencies": {
     "@jitsi/logger": "^2.0.0",
-    "@jitsi/robotjs": "^0.6.9",
+    "@jitsi/robotjs": "^0.6.13",
     "electron-store": "^8.0.1",
-    "node-addon-api": "^5.0.0",
+    "node-addon-api": "^6.0.0",
     "node-gyp-build": "4.3.0",
     "postis": "^2.2.0"
   },
