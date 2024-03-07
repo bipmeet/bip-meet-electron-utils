@@ -2,27 +2,66 @@ name: CI
 
 on:
   pull_request:
-  release:
-    types:
-      - published
+  push:
+    branches:
+      - master
 
 jobs:
   build:
-    name: Build on ${{ matrix.os }}
+    name: Build ${{ matrix.build-group }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-20.04, windows-2019, macos-10.15]
+        include:
+          - os: windows-2019
+            arch: x86
+            build-group: win32-x86
+          - os: windows-2019
+            arch: x64
+            build-group: win32-x64
+    env:
+      BUILD_GROUP: ${{ matrix.build-group }}
     steps:
-    - uses: actions/checkout@v2
-    - uses: actions/setup-node@v2
+    - uses: actions/checkout@v4
+    - uses: actions/setup-node@v4
       with:
-        node-version: '12'
-    - name: Install dependencies
-      if: startsWith(matrix.os, 'ubuntu')
-      run: sudo apt-get install libxtst-dev libpng++-dev
-    - run: npm install
-    - name: Release prebuilt artifacts
-      if: github.event_name == 'release' && github.event.action == 'published'
-      run: npx prebuild -t 9.0.0 -t 10.0.0 -t 11.0.0 -t 12.0.0 -t 13.0.0 -r electron -u ${{ secrets.PUBLISH_TOKEN }}
+        node-version: '16'
+        architecture: ${{ matrix.arch }}
+    - run: npm ci
+    - run: npm run lint
+    - run: TESTING=true npx mocha
+      shell: bash
+    - name: Prebuildify
+      run: npm run prebuild-$BUILD_GROUP
+      shell: bash
+    - uses: actions/upload-artifact@v3
+      with:
+        name: prebuilds
+        path: prebuilds/
+  publish:
+    name: Publish to npm
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-20.04
+    needs: build
+    concurrency:
+      group: ${{ github.ref }}
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/download-artifact@v3
+      with:
+        name: prebuilds
+        path: prebuilds
+    - uses: phips28/gh-action-bump-version@8967e27a4427b87c0071975df4b5e8500d0f63de
+      with:
+        tag-prefix: 'v'
+        version-type:  'patch'
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - uses: actions/setup-node@v4
+      with:
+        node-version: '16'
+        registry-url: 'https://registry.npmjs.org'
+    - run: npm publish --access public
+      env:
+        NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -1,7 +1,7 @@
 const { ipcRenderer, desktopCapturer } = require('electron');
 
-const { SCREEN_SHARE_EVENTS_CHANNEL, SCREEN_SHARE_EVENTS } = require('./constants');
-const { isMac, isPPTSlideShow } = require('./utils');
+const { SCREEN_SHARE_EVENTS_CHANNEL, SCREEN_SHARE_EVENTS, SCREEN_SHARE_GET_SOURCES } = require('./constants');
+const { isMac, isPPTSlideShow, logInfo, logWarning, setLogger } = require('./utils');
 
 /**
  * Renderer process component that sets up electron specific screen sharing functionality, like screen sharing
@@ -32,11 +32,35 @@ class ScreenShareRenderHook {
         this._iframe.addEventListener('load', this._onIframeApiLoad);
     }
 
+    // if there is no response from the backend a timeout will resolve the promise
+    // TODO: delete this after 2 releases
+    _isNewElectronScreensharingSupported() {
+        return new Promise((resolve) => {
+            if (!this._api._isNewElectronScreensharingSupported) {
+                resolve(false);
+            }
+
+            const timeout = setTimeout(() => resolve(false), 2000);
+            this._api._isNewElectronScreensharingSupported()
+                .then(response => {
+                    if (response.error){
+                        resolve(false);
+                    }
+                    resolve(response);
+                })
+                .catch(() => resolve(false))
+                .finally(() => clearTimeout(timeout));
+        });
+    }
+
     /**
      * Make sure that even after reload/redirect the screensharing will be available
      */
-    _onIframeApiLoad() {
+    async _onIframeApiLoad() {
         const self = this;
+
+        // TODO: delete this after 2 releases
+        
         this._iframe.contentWindow.JitsiMeetElectron = {
             /**
              * Get sources available for screensharing. The callback is invoked
@@ -56,6 +80,10 @@ class ScreenShareRenderHook {
             obtainDesktopStreams(callback, errorCallback, options = {}) {
                 desktopCapturer
                 .getSources(options)
+                .then((sources) => callback(sources))
+                .catch((error) => errorCallback(error));
+                
+                ipcRenderer.invoke(SCREEN_SHARE_GET_SOURCES, options)
                 .then((sources) => callback(sources))
                 .catch((error) => errorCallback(error));
             },
@@ -105,7 +133,28 @@ class ScreenShareRenderHook {
 
         ipcRenderer.on(SCREEN_SHARE_EVENTS_CHANNEL, this._onScreenSharingEvent);
         this._api.on('screenSharingStatusChanged', this._onScreenSharingStatusChanged);
-        this._api.on('videoConferenceLeft', this._cleanTrackerContext);
+        this._api.on('videoConferenceLeft', this._sendCloseTrackerEvent);
+
+        const isNewElectronScreensharingSupported = await this._isNewElectronScreensharingSupported();
+
+        if (isNewElectronScreensharingSupported) {
+            this._iframe.contentWindow.JitsiMeetElectron = undefined;
+            this._api.on('_requestDesktopSources', async (request, callback) => {
+                const { options } = request;
+
+                ipcRenderer.invoke(SCREEN_SHARE_GET_SOURCES, options)
+                    .then(sources => {
+                        sources.forEach(item => {
+                            item.thumbnail.dataUrl = item.thumbnail.toDataURL(); 
+                        });
+                        callback({ sources });
+                    })
+                    .catch((error) => callback({ error }));
+            });
+            logInfo("Using external api screen sharing method");
+        } else {
+            logInfo("Using legacy screen sharing method");
+        }
     }
 
     /**
@@ -126,7 +175,7 @@ class ScreenShareRenderHook {
                 }
                 break;
             default:
-                console.warn(`Unhandled ${SCREEN_SHARE_EVENTS_CHANNEL}: ${data}`);
+                logWarning(`Unhandled ${SCREEN_SHARE_EVENTS_CHANNEL}: ${data}`);
 
         }
     }
@@ -195,7 +244,7 @@ class ScreenShareRenderHook {
     _cleanTrackerContext() {
         ipcRenderer.removeListener(SCREEN_SHARE_EVENTS_CHANNEL, this._onScreenSharingEvent);
         this._api.removeListener('screenSharingStatusChanged', this._onScreenSharingStatusChanged);
-        this._api.removeListener('videoConferenceLeft', this._cleanTrackerContext);
+        this._api.removeListener('videoConferenceLeft', this._sendCloseTrackerEvent);
         this._PPWindowInterval = 0;
         this._mainPPWindowName = "";
         this._sendCloseTrackerEvent();
@@ -223,6 +272,8 @@ class ScreenShareRenderHook {
  *
  * @param {JitsiIFrameApi} api - The Jitsi Meet iframe api object.
  */
-module.exports = function setupScreenSharingRender(api) {
+module.exports = function setupScreenSharingRender(api, loggerTransports = null) {
+    setLogger(loggerTransports);
+
     return new ScreenShareRenderHook(api);
 };
