@@ -23,8 +23,8 @@ jobs:
     env:
       BUILD_GROUP: ${{ matrix.build-group }}
     steps:
-    - uses: actions/checkout@v3
-    - uses: actions/setup-node@v3
+    - uses: actions/checkout@v4
+    - uses: actions/setup-node@v4
       with:
         node-version: '16'
         architecture: ${{ matrix.arch }}
@@ -47,18 +47,18 @@ jobs:
     concurrency:
       group: ${{ github.ref }}
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - uses: actions/download-artifact@v3
       with:
         name: prebuilds
         path: prebuilds
-    - uses: phips28/gh-action-bump-version@95099cd5edcdae43499bc94202b9d907e739e9c8
+    - uses: phips28/gh-action-bump-version@8967e27a4427b87c0071975df4b5e8500d0f63de
       with:
         tag-prefix: 'v'
         version-type:  'patch'
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    - uses: actions/setup-node@v3
+    - uses: actions/setup-node@v4
       with:
         node-version: '16'
         registry-url: 'https://registry.npmjs.org'

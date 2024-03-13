@@ -27,6 +27,13 @@ class ScreenShareMainHook {
         this._identity = identity;
         this._onScreenSharingEvent = this._onScreenSharingEvent.bind(this);
         this.cleanup = this.cleanup.bind(this);
+        this._participantListToggler = participantListToggler;
+        this.updateHostHandler = updateHostHandler;
+        this.updateCurrentLang = updateCurrentLang;
+        this.openWhiteBoardTracker = openWhiteBoardTracker;
+        this.handleHostAction = handleHostAction;
+        this.getTenantFromStore = getTenantFromStore;
+        this.getApplicationVersion = getApplicationVersion;
 
         if (osxBundleId && isMac()) {
             this._verifyScreenCapturePermissions(osxBundleId);
@@ -83,14 +90,14 @@ class ScreenShareMainHook {
      */
     cleanup() {
         electron.ipcMain.removeListener(SCREEN_SHARE_EVENTS_CHANNEL, this._onScreenSharingEvent);
-        participantListToggler && electron.ipcMain.removeListener('PARTICIPANT_WINDOW_OPEN', participantListToggler);
-        participantListToggler && electron.ipcMain.removeListener('PARTICIPANT_WINDOW_CLOSE', participantListToggler);
-        updateHostHandler && electron.ipcMain.removeListener('PARTICIPANT_WINDOW_UPDATE_HOST', updateHostHandler);
-        updateCurrentLang && electron.ipcMain.removeListener('UPDATE_CURRENT_LANG', updateCurrentLang);
-        openWhiteBoardTracker && electron.ipcMain.removeListener('TOGGLE_WHITE_BOARD_SCREEN', openWhiteBoardTracker);
-        handleHostAction && electron.ipcMain.removeListener('HANDLE_HOST_ACTION', handleHostAction);
-        getTenantFromStore && electron.ipcMain.removeListener('GET_TENANT_FROM_STORE', getTenantFromStore);
-        getApplicationVersion && electron.ipcMain.removeListener('GET_APP_VERSION', getApplicationVersion);
+        this.participantListToggler && electron.ipcMain.removeListener('PARTICIPANT_WINDOW_OPEN', this.participantListToggler);
+        this.participantListToggler && electron.ipcMain.removeListener('PARTICIPANT_WINDOW_CLOSE', this.participantListToggler);
+        this.updateHostHandler && electron.ipcMain.removeListener('PARTICIPANT_WINDOW_UPDATE_HOST', this.updateHostHandler);
+        this.updateCurrentLang && electron.ipcMain.removeListener('UPDATE_CURRENT_LANG', this.updateCurrentLang);
+        this.openWhiteBoardTracker && electron.ipcMain.removeListener('TOGGLE_WHITE_BOARD_SCREEN', this.openWhiteBoardTracker);
+        this.handleHostAction && electron.ipcMain.removeListener('HANDLE_HOST_ACTION', this.handleHostAction);
+        this.getTenantFromStore && electron.ipcMain.removeListener('GET_TENANT_FROM_STORE',this.getTenantFromStore);
+        this.getApplicationVersion && electron.ipcMain.removeListener('GET_APP_VERSION', this.getApplicationVersion);
         electron.ipcMain.removeHandler(SCREEN_SHARE_GET_SOURCES);
     }
 
